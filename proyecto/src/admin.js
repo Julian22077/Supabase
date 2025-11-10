@@ -37,7 +37,7 @@ estudiantesDiv.innerHTML = `<p>Error cargando estudiantes:
 ${errorEst.message}</p>`;
 return;
 }
-if (user.email !== "daniel.diazd@uniagustiniana.edu.co") {
+if (user.email !== "julianhernandez2207@gmail.com") {
 app.innerHTML = "<p>⛔ No tienes permisos para acceder a este panel.</p>";
 return;
 }

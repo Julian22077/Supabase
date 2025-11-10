@@ -11,8 +11,6 @@ app.innerHTML = `
 />
 <input type="password" name="password" placeholder="Contraseña"
 required />
-<input type="text" name="telefono" placeholder="Teléfono"
-required />
 <button type="submit">Registrarse</button>
 </form>
 <p id="error" style="color:red;"></p>
@@ -27,7 +25,6 @@ errorMsg.textContent = '';
 const nombre = form.nombre.value.trim();
 const correo = form.correo.value.trim();
 const password = form.password.value.trim();
-const telefono = form.telefono.value.trim();
 if (!nombre || !correo || !password) {
 errorMsg.textContent = 'Por favor completa todos los campos.';
 return;
@@ -50,8 +47,8 @@ return;
 }
 // 2️⃣Insertar en tabla "estudiantes"
 const { error: errorInsert } = await
-supabase.from('estudiantes').insert([
-{ id: uid, nombre, correo, telefono },
+supabase.from('usuarios').insert([
+{ id: uid, nombre, correo },
 ]);
 
 if (errorInsert) {

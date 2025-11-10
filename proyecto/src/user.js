@@ -10,8 +10,8 @@ app.innerHTML = `
 <label>Correo (solo lectura)</label>
 
 <input type="email" id="correo" disabled />
-<label>Teléfono</label>
-<input type="text" id="telefono" />
+<label>Biografia</label>
+<input type="bio" id="bio" />
 <button type="submit">Actualizar datos</button>
 </form>
 <p id="mensaje"></p>
@@ -27,7 +27,7 @@ error: userError,
 const correo = user.email;
 // 🔹 Cargar datos del estudiante
 const { data, error } = await supabase
-.from("estudiantes")
+.from("usuarios")
 .select("*")
 .eq("correo", correo)
 .single();
@@ -37,16 +37,16 @@ return;
 }
 document.getElementById("nombre").value = data.nombre || "";
 document.getElementById("correo").value = data.correo || "";
-document.getElementById("telefono").value = data.telefono || "";
+document.getElementById("bio").value = data.bio || "";
 // 🔹 Actualizar datos
 form.addEventListener("submit", async (e) => {
 e.preventDefault();
 const nombre = document.getElementById("nombre").value.trim();
-const telefono = document.getElementById("telefono").value.trim();
+const bio = document.getElementById("bio").value.trim();
 
 const { error: updateError } = await supabase
-.from("estudiantes")
-.update({ nombre, telefono })
+.from("usuarios")
+.update({ nombre, bio })
 .eq("correo", correo);
 if (updateError) {
 mensaje.textContent = "❌ Error al actualizar: " +

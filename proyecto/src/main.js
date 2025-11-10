@@ -5,13 +5,17 @@ import { mostrarLogin } from './login.js';
 import { mostrarMVP } from './mvp.js';
 import { mostrarUser } from './user.js';
 import { supabase } from './supabase.js';
+import { mostrarAmigos } from './friends.js';
+import { mostrarFeed } from './feed.js';
 // Funciones de navegación disponibles para ser llamadas
 const routes = {
+'feed':mostrarFeed,
 'registro': mostrarRegistro,
 'login': mostrarLogin,
 'actividades': mostrarMVP,
 'usuarios': mostrarUser,
-'admin': mostrarAdmin // Asume que tienes una forma de verificar y mostrar el admin
+'admin': mostrarAdmin,
+'amigos':mostrarAmigos // Asume que tienes una forma de verificar y mostrar el admin
 };
 async function CerrarSesion() {
 await supabase.auth.signOut();
@@ -40,7 +44,8 @@ menu.innerHTML = `
                 <button data-action="actividades">Actividades</button>
                 <button data-action="usuarios">Usuarios</button>
                 <button data-action="logout">Cerrar sesión</button>
-                ${user.email === 'admin@mail.com' ? '<button data-action="admin">Admin</button>' : ''}
+                <button data-action="amigos">Amigos</button>
+                ${user.email === 'julianhernandez2207@gmail.com' ? '<button data-action="admin">Admin</button>' : ''}
             </div>
         `;
 }
@@ -57,3 +62,4 @@ button.addEventListener('click', routes[action]);
 }
 // 🌀 Llamamos la función apenas cargue la página
 document.addEventListener("DOMContentLoaded", cargarMenu);
+mostrarFeed();
