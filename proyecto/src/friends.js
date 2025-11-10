@@ -125,7 +125,37 @@ export async function mostrarAmigos() {
   }
 
   // -------------------------
-  // Funciones de listas
+  // Eliminar amigo (borrar la relación aceptada)
+  // -------------------------
+  async function removeFriend(amistadId) {
+    try {
+      const user = await getCurrentUser();
+      if (!user) throw new Error('No autenticado');
+
+      // asegurarnos que la amistad exista y que el usuario sea parte de ella
+      const { data: row, error: rowErr } = await supabase.from('amistades')
+        .select('id, solicitante, receptor, estado')
+        .eq('id', amistadId)
+        .maybeSingle();
+      if (rowErr) throw rowErr;
+      if (!row) throw new Error('Relación no encontrada');
+      if (row.estado !== 'aceptada') throw new Error('Solo se pueden eliminar amigos (estado = aceptada)');
+
+      if (row.solicitante !== user.id && row.receptor !== user.id) {
+        throw new Error('No autorizado');
+      }
+
+      const { error: delErr } = await supabase.from('amistades').delete().eq('id', amistadId);
+      if (delErr) throw delErr;
+      return { ok: true };
+    } catch (err) {
+      console.error('removeFriend error:', err);
+      return { error: err };
+    }
+  }
+
+  // -------------------------
+  // Funciones de listas (modificadas para devolver amistad id)
   // -------------------------
   async function getIncomingRequests(user) {
     if (!user) return { data: [] };
@@ -176,19 +206,34 @@ export async function mostrarAmigos() {
   async function getFriendsList(user) {
     if (!user) return { data: [] };
     try {
+      // traemos filas de amistad aceptadas (incluye el id de la relación)
       const { data: rows = [] } = await supabase.from('amistades')
         .select('id, solicitante, receptor, estado, creado_en, actualizado_en')
         .or(`solicitante.eq.${user.id},receptor.eq.${user.id}`)
         .eq('estado', 'aceptada');
 
-      const friendIds = rows.map(r => r.solicitante === user.id ? r.receptor : r.solicitante).filter(Boolean);
+      const friendIds = rows.map(r => (r.solicitante === user.id ? r.receptor : r.solicitante)).filter(Boolean);
       if (!friendIds.length) return { data: [] };
 
       const { data: users = [] } = await supabase.from('usuarios')
         .select('id,nombre,correo,avatar_url')
         .in('id', friendIds);
 
-      return { data: users };
+      // crear mapa de usuarios por id
+      const usersMap = {};
+      users.forEach(u => usersMap[u.id] = u);
+
+      // Combinar rows + user info y devolver amistadId
+      const combined = rows.map(r => {
+        const friendId = r.solicitante === user.id ? r.receptor : r.solicitante;
+        return {
+          amistadId: r.id,
+          usuario: usersMap[friendId] || { id: friendId, nombre: friendId },
+          creado_en: r.creado_en
+        };
+      });
+
+      return { data: combined };
     } catch (err) {
       console.error('getFriendsList error:', err);
       return { data: [] };
@@ -260,13 +305,36 @@ export async function mostrarAmigos() {
   function renderFriends(list) {
     if (!list || list.length === 0) { friendsList.innerHTML = '<p>No tienes amigos aún.</p>'; return; }
     friendsList.innerHTML = '';
-    list.forEach(u => {
+    list.forEach(item => {
+      const u = item.usuario;
       const div = document.createElement('div');
       div.innerHTML = `
-        <div style="padding:8px;border:1px solid #eee;margin-bottom:8px;border-radius:6px">
-          <strong>${escapeHtml(u.nombre)}</strong> <small style="color:#666">${escapeHtml(u.correo)}</small>
+        <div style="padding:8px;border:1px solid #eee;margin-bottom:8px;border-radius:6px;display:flex;align-items:center;justify-content:space-between">
+          <div>
+            <strong>${escapeHtml(u.nombre)}</strong> <small style="color:#666">${escapeHtml(u.correo || '')}</small>
+          </div>
+          <div>
+            <button data-amistad="${item.amistadId}" class="btn-remove-friend">Eliminar</button>
+          </div>
         </div>`;
       friendsList.appendChild(div);
+    });
+
+    // asociar eventos de eliminar amigo
+    friendsList.querySelectorAll('.btn-remove-friend').forEach(btn => {
+      btn.addEventListener('click', async (ev) => {
+        const amistadId = ev.target.dataset.amistad;
+        if (!amistadId) return;
+        if (!confirm('¿Eliminar amistad? Esta acción no se puede deshacer.')) return;
+        ev.target.disabled = true;
+        const { error, ok } = await removeFriend(amistadId);
+        if (error) {
+          alert('No se pudo eliminar la amistad: ' + (error.message || error));
+          ev.target.disabled = false;
+          return;
+        }
+        await refreshAll();
+      });
     });
   }
 

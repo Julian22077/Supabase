@@ -1,4 +1,3 @@
-// src/feed.js
 import { supabase } from './supabase.js';
 
 function escapeHtml(s) {
@@ -21,11 +20,26 @@ export async function mostrarFeed() {
   `;
   const feed = document.getElementById('feed-publicaciones');
 
+  async function fetchMyNameOnce(user) {
+    if (!user) return null;
+    try {
+      const { data: me } = await supabase
+        .from('usuarios')
+        .select('nombre')
+        .eq('id', user.id)
+        .maybeSingle();
+      return me?.nombre || null;
+    } catch (err) {
+      console.error('fetchMyNameOnce error:', err);
+      return null;
+    }
+  }
+
   async function cargarPublicaciones() {
     feed.innerHTML = 'Cargando publicaciones...';
 
     const { data: userData } = await supabase.auth.getUser();
-    const user = userData?.user;
+    const user = userData?.user || null;
 
     let q = supabase
       .from('publicaciones')
@@ -37,11 +51,12 @@ export async function mostrarFeed() {
       q = q.eq('privacidad', 'publico');
     }
 
-    const { data: posts, error } = await q.order('creado_en', { ascending: false }).limit(100);
-
-    if (error) {
+    const { data: posts = [], error: postsErr } = await q
+      .order('creado_en', { ascending: false })
+      .limit(100);
+    if (postsErr) {
       feed.innerHTML = 'Error al cargar publicaciones.';
-      console.error(error);
+      console.error('postsErr:', postsErr);
       return;
     }
     if (!posts || posts.length === 0) {
@@ -49,18 +64,29 @@ export async function mostrarFeed() {
       return;
     }
 
-    // Obtener nombres de autores
+    // obtener autores con avatar
     const authorIds = Array.from(new Set(posts.map(p => p.usuario_id))).filter(Boolean);
-    const { data: authors = [] } = await supabase.from('usuarios').select('id, nombre').in('id', authorIds);
-    const authorMap = {};
-    authors.forEach(a => authorMap[a.id] = a.nombre || a.id);
+    const { data: authors = [], error: authErr } = await supabase
+      .from('usuarios')
+      .select('id, nombre, avatar_url')
+      .in('id', authorIds);
+    if (authErr) console.error('authors error:', authErr);
 
-    // Likes y comentarios
+    const authorMap = {};
+    authors.forEach(a => authorMap[a.id] = { nombre: a.nombre || a.id, avatar_url: a.avatar_url || '' });
+
     const postIds = posts.map(p => p.id);
-    const { data: likesData = [] } = await supabase.from('likes').select('*').in('publicacion_id', postIds);
-    const { data: commentsData = [] } = await supabase.from('comentarios')
-      .select('id, publicacion_id, usuario_id, contenido, creado_en, usuarios(nombre)')
+    const { data: likesData = [], error: likesErr } = await supabase
+      .from('likes')
+      .select('id, publicacion_id, usuario_id')
       .in('publicacion_id', postIds);
+    if (likesErr) console.error('likesErr:', likesErr);
+
+    const { data: commentsData = [], error: commentsErr } = await supabase
+      .from('comentarios')
+      .select('id, publicacion_id, usuario_id, contenido, creado_en, usuarios(nombre, avatar_url)')
+      .in('publicacion_id', postIds);
+    if (commentsErr) console.error('commentsErr:', commentsErr);
 
     const likesMap = {};
     likesData.forEach(l => {
@@ -74,11 +100,18 @@ export async function mostrarFeed() {
       commentsMap[c.publicacion_id].push(c);
     });
 
-    // Render
+    const myNameCache = await fetchMyNameOnce(user);
+
     feed.innerHTML = '';
     for (const p of posts) {
-      const authorName = authorMap[p.usuario_id] || p.usuario_id;
+      const author = authorMap[p.usuario_id] || { nombre: p.usuario_id, avatar_url: '' };
       const card = document.createElement('div');
+
+      const likesId = `likes-count-${p.id}`;
+      const commentsId = `comments-${p.id}`;
+      const commentInputId = `comment-input-${p.id}`;
+      const sendBtnClass = `btn-send-comment-${p.id}`;
+      const likeBtnClass = `btn-like-${p.id}`;
 
       const userHasLiked = user && likesMap[p.id]?.includes(user.id);
       const likesCount = likesMap[p.id]?.length || 0;
@@ -86,71 +119,152 @@ export async function mostrarFeed() {
 
       card.innerHTML = `
         <article style="padding:8px;border-radius:6px;margin-bottom:12px;border:1px solid #eee">
-          <p style="margin:0 0 6px 0"><strong>${escapeHtml(authorName)}</strong> 
-          <small style="color:#666">• ${new Date(p.creado_en).toLocaleString()}</small></p>
+          <div style="display:flex;align-items:center;gap:8px;">
+            ${author.avatar_url ? `<img src="${escapeHtml(author.avatar_url)}" alt="avatar" style="width:40px;height:40px;border-radius:50%">` : ''}
+            <p style="margin:0">
+              <strong class="user-link" data-id="${p.usuario_id}" style="cursor:pointer;color:blue;">
+                ${escapeHtml(author.nombre)}
+              </strong>
+              <small style="color:#666">• ${new Date(p.creado_en).toLocaleString()}</small>
+            </p>
+          </div>
           <p style="white-space:pre-wrap;margin:6px 0">${escapeHtml(p.contenido || '')}</p>
           ${p.imagen_url ? `<p><img src="${escapeHtml(p.imagen_url)}" alt="imagen" style="max-width:100%;height:auto;border-radius:4px"></p>` : ''}
           <div style="margin-top:6px">
-            ${user ? `<button class="btn-like" data-id="${p.id}">${userHasLiked ? '💔 Unlike' : '👍 Like'}</button> <span>${likesCount}</span>` : ''}
+            ${user ? `<button class="${likeBtnClass}" data-id="${p.id}">${userHasLiked ? '💔 Unlike' : '👍 Like'}</button> <span id="${likesId}">${likesCount}</span>` : ''}
           </div>
-          <div class="comments-list" style="margin-top:6px">
-            ${postComments.map(c => `<p><strong>${escapeHtml(c.usuarios?.nombre || c.usuario_id)}</strong>: ${escapeHtml(c.contenido)}</p>`).join('')}
+
+          <div class="comments-list" id="${commentsId}" style="margin-top:6px">
+            ${postComments.map(c => `
+              <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
+                ${c.usuarios?.avatar_url ? `<img src="${escapeHtml(c.usuarios.avatar_url)}" alt="avatar" style="width:30px;height:30px;border-radius:50%">` : ''}
+                <p style="margin:0">
+                  <strong class="user-link" data-id="${c.usuario_id}" style="cursor:pointer;color:blue;">
+                    ${escapeHtml(c.usuarios?.nombre || c.usuario_id)}
+                  </strong>: ${escapeHtml(c.contenido)}
+                </p>
+              </div>
+            `).join('')}
           </div>
+
           ${user ? `
             <div class="add-comment" style="margin-top:6px">
-              <input type="text" placeholder="Escribe un comentario..." style="width:80%;padding:4px"/>
-              <button style="padding:4px">Enviar</button>
+              <input id="${commentInputId}" type="text" placeholder="Escribe un comentario..." style="width:80%;padding:6px;border-radius:4px;border:1px solid #ddd"/>
+              <button class="${sendBtnClass}" data-id="${p.id}" style="padding:6px;margin-left:6px;border-radius:4px">Enviar</button>
             </div>
           ` : ''}
         </article>
       `;
 
-      // Likes
-      if (user) {
-        card.querySelector('.btn-like')?.addEventListener('click', async () => {
-          const { data: existing } = await supabase.from('likes')
-            .select('*')
+      feed.appendChild(card);
+
+      // 🔹 CLICK EN NOMBRE DE USUARIO
+      card.querySelectorAll('.user-link').forEach(link => {
+        link.addEventListener('click', async (e) => {
+          const userId = e.target.dataset.id;
+          const mod = await import('./perfilUsuario.js'); // o './info.js' si lo llamaste así
+          mod.mostrarPerfilUsuario(userId);
+        });
+      });
+
+      if (!user) continue;
+
+      const likeBtn = card.querySelector(`.${likeBtnClass}`);
+      const likesSpan = document.getElementById(likesId);
+      const commentsListEl = document.getElementById(commentsId);
+      const inputEl = document.getElementById(commentInputId);
+      const sendBtn = card.querySelector(`.${sendBtnClass}`);
+
+      const setButtonLoading = (btn, loading) => {
+        if (!btn) return;
+        btn.disabled = loading;
+        btn.style.opacity = loading ? '0.6' : '1';
+      };
+
+      likeBtn?.addEventListener('click', async () => {
+        setButtonLoading(likeBtn, true);
+        try {
+          const currentlyLiked = likesMap[p.id]?.includes(user.id);
+          if (currentlyLiked) {
+            likesMap[p.id] = (likesMap[p.id] || []).filter(id => id !== user.id);
+            likeBtn.textContent = '👍 Like';
+          } else {
+            likesMap[p.id] = (likesMap[p.id] || []).concat([user.id]);
+            likeBtn.textContent = '💔 Unlike';
+          }
+          likesSpan.textContent = (likesMap[p.id] || []).length;
+
+          const { data: existingLike } = await supabase.from('likes')
+            .select('id')
             .eq('publicacion_id', p.id)
             .eq('usuario_id', user.id)
             .maybeSingle();
 
-          if (existing) {
-            await supabase.from('likes').delete().eq('id', existing.id);
+          if (existingLike) {
+            const { error } = await supabase.from('likes').delete().eq('id', existingLike.id);
+            if (error) throw error;
           } else {
-            await supabase.from('likes').insert([{ publicacion_id: p.id, usuario_id: user.id }]);
+            const { error } = await supabase.from('likes').insert([{ publicacion_id: p.id, usuario_id: user.id }]);
+            if (error) throw error;
           }
-          await cargarPublicaciones();
-        });
-
-        // Comentarios con input
-        const commentDiv = card.querySelector('.add-comment');
-        if (commentDiv) {
-          const input = commentDiv.querySelector('input');
-          const button = commentDiv.querySelector('button');
-
-          button.addEventListener('click', async () => {
-            if (!input.value.trim()) return;
-            await supabase.from('comentarios').insert([{ publicacion_id: p.id, usuario_id: user.id, contenido: input.value }]);
-            await cargarPublicaciones();
-          });
-
-          // También enviar con Enter
-          input.addEventListener('keydown', async (e) => {
-            if (e.key === 'Enter') {
-              e.preventDefault();
-              button.click();
-            }
-          });
+        } catch (err) {
+          console.error('Error toggle like:', err);
+          alert('No se pudo procesar el like, inténtalo de nuevo.');
+        } finally {
+          setButtonLoading(likeBtn, false);
         }
-      }
+      });
 
-      feed.appendChild(card);
+      sendBtn?.addEventListener('click', async () => {
+        if (!inputEl) return;
+        const text = inputEl.value.trim();
+        if (!text) return;
+        setButtonLoading(sendBtn, true);
+        inputEl.value = '';
+        try {
+          const { data: inserted, error: insertErr } = await supabase.from('comentarios')
+            .insert([{ publicacion_id: p.id, usuario_id: user.id, contenido: text }])
+            .select('id, publicacion_id, usuario_id, contenido, creado_en, usuarios(nombre, avatar_url)')
+            .single();
+          if (insertErr) throw insertErr;
+
+          const myName = myNameCache || await fetchMyNameOnce(user) || user.email || user.id;
+          const myAvatar = inserted.usuarios?.avatar_url || '';
+
+          const html = `
+            <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
+              ${myAvatar ? `<img src="${escapeHtml(myAvatar)}" alt="avatar" style="width:30px;height:30px;border-radius:50%">` : ''}
+              <p style="margin:0"><strong>${escapeHtml(myName)}</strong>: ${escapeHtml(inserted.contenido)}</p>
+            </div>
+          `;
+          commentsListEl.insertAdjacentHTML('beforeend', html);
+        } catch (err) {
+          console.error('Error insert comentario:', err);
+          alert('No se pudo guardar el comentario. Inténtalo de nuevo.');
+        } finally {
+          setButtonLoading(sendBtn, false);
+        }
+      });
+
+      inputEl?.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          sendBtn?.click();
+        }
+      });
     }
   }
 
-  // Inicializar y listener auth
   await cargarPublicaciones();
-  supabase.auth.onAuthStateChange(() => {
-    cargarPublicaciones();
+  const { data: sub } = supabase.auth.onAuthStateChange(() => {
+    cargarPublicaciones().catch(console.error);
   });
+
+  return () => {
+    try {
+      if (sub?.subscription) sub.subscription.unsubscribe();
+    } catch (err) {
+      console.warn('Error unsubscribing auth listener:', err);
+    }
+  };
 }
