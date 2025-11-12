@@ -100,31 +100,43 @@ export async function mostrarPerfilUsuario(userId) {
 
     // 6️⃣ Render final del perfil
     app.innerHTML = `
-      <button id="btn-volver-feed" style="margin-bottom:10px;">⬅ Volver al feed</button>
+      <div class="profile-container">
+    <button id="btn-volver-feed" class="btn-back">⬅ Volver</button>
 
-      <section style="border-bottom:1px solid #ccc;padding-bottom:10px;margin-bottom:10px;">
-        ${usuario.avatar_url ? `<img src="${escapeHtml(usuario.avatar_url)}" alt="avatar" style="width:80px;height:80px;border-radius:50%">` : ''}
-        <h2>${escapeHtml(usuario.nombre)}</h2>
-        <p>${escapeHtml(usuario.bio || '')}</p>
-        <p><small>Miembro desde: ${new Date(usuario.creado_en).toLocaleDateString()}</small></p>
-        <div id="profile-actions" style="margin-top:8px;">
+    <section class="profile-header" aria-label="Perfil de usuario">
+      ${usuario.avatar_url ? `<img class="profile-avatar" src="${escapeHtml(usuario.avatar_url)}" alt="avatar">` : `<div class="profile-avatar" aria-hidden="true"></div>`}
+
+      <div class="profile-info">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
+          <div style="min-width:0">
+            <h2 class="profile-name">${escapeHtml(usuario.nombre)}</h2>
+            <p class="profile-bio">${escapeHtml(usuario.bio || '')}</p>
+            <p style="margin-top:6px;"><small>Miembro desde: ${new Date(usuario.creado_en).toLocaleDateString()}</small></p>
+          </div>
+        </div>
+
+        <div id="profile-actions" class="profile-actions">
           ${actionsHtml}
         </div>
-      </section>
+      </div>
+    </section>
 
-      <section>
-        <h3>Publicaciones</h3>
+    <section>
+      <h3>Publicaciones</h3>
+      <div class="profile-posts">
         ${publicaciones.length === 0
-          ? '<p>No hay publicaciones visibles para este perfil.</p>'
+          ? `<div class="profile-empty">No hay publicaciones visibles para este perfil.</div>`
           : publicaciones.map(p => `
-              <article style="border:1px solid #eee;padding:8px;border-radius:6px;margin-bottom:10px;">
-                <p>${escapeHtml(p.contenido || '')}</p>
-                ${p.imagen_url ? `<p><img src="${escapeHtml(p.imagen_url)}" style="max-width:100%;border-radius:4px;"></p>` : ''}
-                <small>${new Date(p.creado_en).toLocaleString()}</small>
+              <article class="post-card">
+                <div class="post-content">${escapeHtml(p.contenido || '')}</div>
+                ${p.imagen_url ? `<div><img src="${escapeHtml(p.imagen_url)}" alt="imagen de publicación"></div>` : ''}
+                <small style="color:#6b7280">${new Date(p.creado_en).toLocaleString()}</small>
               </article>
             `).join('')
         }
-      </section>
+      </div>
+    </section>
+  </div>
     `;
 
     // 7️⃣ Volver al feed

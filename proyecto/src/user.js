@@ -3,26 +3,36 @@ import { supabase } from "./supabase.js";
 export async function mostrarUser() {
   const app = document.getElementById("app");
   app.innerHTML = `
-<section>
-  <h2>Perfil del Usuario</h2>
-  <form id="user-form">
-    <label>Nombre</label>
-    <input type="text" id="nombre" required />
+<section class="profile-container">
 
-    <label>Correo (solo lectura)</label>
-    <input type="email" id="correo" disabled />
+  <h2 class="page-title">Perfil del Usuario</h2>
 
-    <label>Biografía</label>
-    <input type="text" id="bio" />
+  <div class="user-card">
+    <div class="user-card-left">
+      <div id="preview" class="avatar-preview" aria-live="polite"></div>
+      <div class="small-note">Previsualización de avatar</div>
+    </div>
 
-    <label>Avatar (URL)</label>
-    <input type="text" id="avatar-url" placeholder="https://..." />
+    <form id="user-form" class="user-form" novalidate>
+      <label for="nombre">Nombre</label>
+      <input type="text" id="nombre" required />
 
-    <div id="preview" style="margin-top:8px;"></div>
+      <label for="correo">Correo (solo lectura)</label>
+      <input type="email" id="correo" disabled />
 
-    <button type="submit">Actualizar datos</button>
-  </form>
-  <p id="mensaje"></p>
+      <label for="bio">Biografía</label>
+      <input type="text" id="bio" />
+
+      <label for="avatar-url">Avatar (URL)</label>
+      <input type="url" id="avatar-url" placeholder="https://example.com/avatar.jpg" />
+
+      <div class="form-actions">
+        <button type="submit" class="btn btn-primary">Actualizar datos</button>
+      </div>
+
+      <p id="mensaje" class="form-message" role="status" aria-live="polite"></p>
+    </form>
+  </div>
 </section>
   `;
 

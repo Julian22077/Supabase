@@ -2,18 +2,28 @@ import { supabase } from './supabase.js';
 export function mostrarRegistro() {
 const app = document.getElementById('app');
 app.innerHTML = `
-<section>
-<h2>Registro de Estudiante</h2>
-<form id="registro-form">
-<input type="text" name="nombre" placeholder="Nombre" required
-/>
-<input type="email" name="correo" placeholder="Correo" required
-/>
-<input type="password" name="password" placeholder="Contraseña"
-required />
-<button type="submit">Registrarse</button>
-</form>
-<p id="error" style="color:red;"></p>
+<section class="login-wrapper">
+  <div class="login-card">
+    <div class="fb-top">
+      <div class="fb-logo">fakebook</div>
+      <div class="fb-sub">Crea una cuenta nueva</div>
+    </div>
+
+    <h2>Registro de Estudiante</h2>
+
+    <form id="registro-form">
+      <input type="text" name="nombre" placeholder="Nombre completo" required />
+      <input type="email" name="correo" placeholder="Correo electrónico" required />
+      <input type="password" name="password" placeholder="Contraseña" required />
+      <button type="submit">Registrarse</button>
+    </form>
+
+    <p id="error"></p>
+
+    <div class="login-footer">
+      <small id="volver-login">¿Ya tienes cuenta? Inicia sesión</small>
+    </div>
+  </div>
 </section>
 
 `;

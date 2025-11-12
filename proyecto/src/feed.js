@@ -14,12 +14,59 @@ export async function mostrarFeed() {
   const app = document.getElementById('app');
   app.innerHTML = `
     <section>
-      <h2>Feed</h2>
       <div id="feed-publicaciones">Cargando publicaciones...</div>
     </section>
   `;
   const feed = document.getElementById('feed-publicaciones');
 
+  // -------------------- Helpers para evitar que el menú tape posts --------------------
+  let resizeTimer = null;
+  let menuObserver = null;
+
+  // Calcula altura del menu y aplica padding-top AL FEED (idempotente)
+  function updateFeedOffset() {
+    const menu = document.getElementById('menu');
+    if (!menu || !feed) return;
+    const rect = menu.getBoundingClientRect();
+    const h = Math.max(0, Math.round(rect.height || 0));
+    // Establecer variable CSS (opcional) y padding del feed (reemplaza, no suma)
+    document.documentElement.style.setProperty('--menu-height', `${h}px`);
+    feed.style.paddingTop = `${h + 12}px`; // 12px de espacio extra (ajusta si quieres)
+    // asegurar scroll-padding-top para scrollIntoView
+    document.documentElement.style.setProperty('scroll-padding-top', `${h}px`);
+  }
+
+  // Debounced wrapper para resize
+  function scheduleUpdateFeedOffset(ms = 80) {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(updateFeedOffset, ms);
+  }
+
+  // Observador del menu para detectar cambios en DOM/clases/estilos que alteren altura
+  function observeMenuMutations() {
+    const menu = document.getElementById('menu');
+    if (!menu) return;
+    // Si ya hay un observer local, desconectarlo antes
+    if (menuObserver) {
+      try { menuObserver.disconnect(); } catch (e) {}
+      menuObserver = null;
+    }
+    menuObserver = new MutationObserver(() => {
+      // recalcular cuando haya cambios en DOM del menu
+      scheduleUpdateFeedOffset(40);
+    });
+    menuObserver.observe(menu, { childList: true, subtree: true, attributes: true, attributeFilter: ['class', 'style'] });
+  }
+
+  // Registrar resize listener (local) — se puede limpiar en el cleanup
+  function startResizeListener() {
+    window.addEventListener('resize', scheduleUpdateFeedOffset);
+  }
+  function stopResizeListener() {
+    window.removeEventListener('resize', scheduleUpdateFeedOffset);
+  }
+
+  // -------------------- Funciones originales de carga de publicaciones --------------------
   async function fetchMyNameOnce(user) {
     if (!user) return null;
     try {
@@ -36,6 +83,9 @@ export async function mostrarFeed() {
   }
 
   async function cargarPublicaciones() {
+    // Asegurar espacio antes de mostrar "Cargando..."
+    updateFeedOffset();
+
     feed.innerHTML = 'Cargando publicaciones...';
 
     const { data: userData } = await supabase.auth.getUser();
@@ -61,6 +111,8 @@ export async function mostrarFeed() {
     }
     if (!posts || posts.length === 0) {
       feed.innerHTML = '<p>No hay publicaciones aún.</p>';
+      // recalcular por si menu cambió mientras no había posts
+      updateFeedOffset();
       return;
     }
 
@@ -102,6 +154,7 @@ export async function mostrarFeed() {
 
     const myNameCache = await fetchMyNameOnce(user);
 
+    // RENDER de publicaciones (usando clases, no estilos inline excepto mínimos)
     feed.innerHTML = '';
     for (const p of posts) {
       const author = authorMap[p.usuario_id] || { nombre: p.usuario_id, avatar_url: '' };
@@ -118,51 +171,51 @@ export async function mostrarFeed() {
       const postComments = commentsMap[p.id] || [];
 
       card.innerHTML = `
-        <article style="padding:8px;border-radius:6px;margin-bottom:12px;border:1px solid #eee">
-          <div style="display:flex;align-items:center;gap:8px;">
-            ${author.avatar_url ? `<img src="${escapeHtml(author.avatar_url)}" alt="avatar" style="width:40px;height:40px;border-radius:50%">` : ''}
-            <p style="margin:0">
-              <strong class="user-link" data-id="${p.usuario_id}" style="cursor:pointer;color:blue;">
-                ${escapeHtml(author.nombre)}
-              </strong>
-              <small style="color:#666">• ${new Date(p.creado_en).toLocaleString()}</small>
-            </p>
+       <article class="feed-card">
+        <div class="post-header">
+          ${author.avatar_url ? `<img class="post-avatar" src="${escapeHtml(author.avatar_url)}" alt="avatar">` : `<div class="post-avatar"></div>`}
+          <div class="post-meta">
+            <span class="post-author user-link" data-id="${p.usuario_id}">${escapeHtml(author.nombre)}</span>
+            <span class="post-time">• ${new Date(p.creado_en).toLocaleString()}</span>
           </div>
-          <p style="white-space:pre-wrap;margin:6px 0">${escapeHtml(p.contenido || '')}</p>
-          ${p.imagen_url ? `<p><img src="${escapeHtml(p.imagen_url)}" alt="imagen" style="max-width:100%;height:auto;border-radius:4px"></p>` : ''}
-          <div style="margin-top:6px">
-            ${user ? `<button class="${likeBtnClass}" data-id="${p.id}">${userHasLiked ? '💔 Unlike' : '👍 Like'}</button> <span id="${likesId}">${likesCount}</span>` : ''}
-          </div>
+        </div>
 
-          <div class="comments-list" id="${commentsId}" style="margin-top:6px">
-            ${postComments.map(c => `
-              <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
-                ${c.usuarios?.avatar_url ? `<img src="${escapeHtml(c.usuarios.avatar_url)}" alt="avatar" style="width:30px;height:30px;border-radius:50%">` : ''}
-                <p style="margin:0">
-                  <strong class="user-link" data-id="${c.usuario_id}" style="cursor:pointer;color:blue;">
-                    ${escapeHtml(c.usuarios?.nombre || c.usuario_id)}
-                  </strong>: ${escapeHtml(c.contenido)}
-                </p>
+        <div class="post-content">${escapeHtml(p.contenido || '')}</div>
+
+        ${p.imagen_url ? `<img class="post-image" src="${escapeHtml(p.imagen_url)}" alt="imagen">` : ''}
+
+        <div class="post-actions">
+          ${user ? `<button class="${likeBtnClass}" data-id="${p.id}">${userHasLiked ? '💔 Unlike' : '👍 Like'}</button> <span class="likes-count" id="${likesId}">${likesCount}</span>` : ''}
+        </div>
+
+        <div class="comments-list" id="${commentsId}">
+          ${postComments.map(c => `
+            <div class="comment-item">
+              ${c.usuarios?.avatar_url ? `<img class="comment-avatar" src="${escapeHtml(c.usuarios.avatar_url)}" alt="avatar">` : `<div class="comment-avatar"></div>`}
+              <div class="comment-body">
+                <span class="comment-author user-link" data-id="${c.usuario_id}">${escapeHtml(c.usuarios?.nombre || c.usuario_id)}</span>
+                <span class="comment-text">${escapeHtml(c.contenido)}</span>
               </div>
-            `).join('')}
-          </div>
-
-          ${user ? `
-            <div class="add-comment" style="margin-top:6px">
-              <input id="${commentInputId}" type="text" placeholder="Escribe un comentario..." style="width:80%;padding:6px;border-radius:4px;border:1px solid #ddd"/>
-              <button class="${sendBtnClass}" data-id="${p.id}" style="padding:6px;margin-left:6px;border-radius:4px">Enviar</button>
             </div>
-          ` : ''}
-        </article>
+          `).join('')}
+        </div>
+
+        ${user ? `
+          <div class="add-comment">
+            <input id="${commentInputId}" type="text" placeholder="Escribe un comentario...">
+            <button class="${sendBtnClass}" data-id="${p.id}">Enviar</button>
+          </div>
+        ` : ''}
+      </article>
       `;
 
       feed.appendChild(card);
 
-      // 🔹 CLICK EN NOMBRE DE USUARIO
+      // CLICK EN NOMBRE DE USUARIO
       card.querySelectorAll('.user-link').forEach(link => {
         link.addEventListener('click', async (e) => {
           const userId = e.target.dataset.id;
-          const mod = await import('./perfilUsuario.js'); // o './info.js' si lo llamaste así
+          const mod = await import('./perfilUsuario.js');
           mod.mostrarPerfilUsuario(userId);
         });
       });
@@ -253,18 +306,32 @@ export async function mostrarFeed() {
         }
       });
     }
-  }
+
+    // Después de renderizar posts, recalcular offset del feed (importante)
+    updateFeedOffset();
+  } // end cargarPublicaciones
 
   await cargarPublicaciones();
+
+  // Observers/listeners: observar menu y resize para recalcular cuando cambie
+  observeMenuMutations();
+  startResizeListener();
+
   const { data: sub } = supabase.auth.onAuthStateChange(() => {
     cargarPublicaciones().catch(console.error);
   });
 
+  // cleanup al desmontar la pantalla (si quien llamó lo usa)
   return () => {
     try {
+      if (menuObserver) {
+        try { menuObserver.disconnect(); } catch (e) {}
+        menuObserver = null;
+      }
+      stopResizeListener();
       if (sub?.subscription) sub.subscription.unsubscribe();
     } catch (err) {
-      console.warn('Error unsubscribing auth listener:', err);
+      console.warn('Error unsubscribing:', err);
     }
   };
 }
